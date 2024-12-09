@@ -1,0 +1,66 @@
+# use IPvlan L3 when setting up your own network
+
+services:
+    traefik:
+        container_name: traefik
+        image: traefik:latest
+        ports:
+            - "80:80"
+            - "443:443"
+            - "8080:8080"
+        command: --api.insecure=true --providers.docker
+        labels:
+            - traefik.http.routers.traefik.rule=Host(`prox.lab`)
+        volumes:
+            - /var/run/docker.sock:/var/run/docker.sock
+            - ./conf/traefik.yaml:/etc/traefik/traefik.yaml:ro
+        networks:
+            scratnet:
+                ipv4_address: "10.10.10.254"
+        restart: unless-stopped
+    homarr:
+        container_name: homarr
+        image: ghcr.io/ajnart/homarr:latest
+        ports:
+            - "7575:7575"
+        labels:
+            - traefik.enable=true
+            - traefik.http.routers.homarr.rule=Host(`home.lab`)
+        depends_on:
+            - traefik
+        networks:
+            scratnet:
+                ipv4_address: "10.10.10.2"
+        restart: unless-stopped
+    pihole:
+        container_name: pihole
+        image: pihole/pihole:latest
+        ports:
+            - "53:53/tcp"
+            - "53:53/udp"
+            - "67:67/udp"
+            - "8082:80/tcp"
+        labels:
+            - traefik.enable=true
+            - traefik.http.routers.pihole.rule=Host(`pihole.lab`)
+            - traefik.http.services.pihole.loadbalancer.server.port=80
+        environment:
+            TZ: Europe/Tallinn
+            WEBPASSWORD: pihole
+        volumes:
+            - ./conf/pihole-dnsmasq.conf:/etc/dnsmasq.d/pihole-dnsmasq.conf:ro
+        restart: unless-stopped
+        depends_on:
+            - traefik
+        networks:
+            scratnet:
+                ipv4_address: "10.10.10.10"
+networks:
+    scratnet:
+        driver: bridge
+        driver_opts:
+            com.docker.network.bridge.host_binding_ipv4: "127.0.127.1"
+        ipam:
+            config:
+              - subnet: "10.10.10.0/24"
+                gateway: "10.10.10.1"
